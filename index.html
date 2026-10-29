@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Recipe Scaler</title>
+<style>
+  /* ===== EDIT FONTS / SIZES / COLORS HERE ===== */
+  :root{
+    --font-heading: ui-rounded,'SF Pro Rounded','Avenir Next',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --font-body: system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --fs-title: 1.7rem;
+    --fs-factor: 3rem;
+    --fs-input: 1rem;      /* keep 1rem or more so iPhone never zooms */
+    --fs-big: 1.35rem;
+    --fs-label: 0.7rem;
+    --fs-small: 0.85rem;
+
+    --bg:#F2F5F1; --surface:#FFFFFF; --surface-2:#F6F8F5; --line:#DDE4DC;
+    --text:#14201B; --muted:#5F6E66;
+    --accent:#0E7C5F; --accent-ink:#FFFFFF; --accent-soft:#DDF1E9;
+    --amber:#E8A317; --danger:#C0392B;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0E1412; --surface:#17201C; --surface-2:#1D2823; --line:#2A3832;
+      --text:#E7EFEA; --muted:#8FA298;
+      --accent:#3DD6A5; --accent-ink:#06261C; --accent-soft:#16352B;
+      --amber:#F2B134; --danger:#FF7A6B;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0E1412; --surface:#17201C; --surface-2:#1D2823; --line:#2A3832;
+    --text:#E7EFEA; --muted:#8FA298;
+    --accent:#3DD6A5; --accent-ink:#06261C; --accent-soft:#16352B;
+    --amber:#F2B134; --danger:#FF7A6B;
+  }
+  /* ============================================ */
+
+  *{ box-sizing:border-box; }
+  :root{
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  html{ -webkit-text-size-adjust:100%; scroll-padding-top:env(safe-area-inset-top,0px); }
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--font-body);
+    padding:20px 16px 56px;
+  }
+  .wrap{ max-width:880px; margin:0 auto; }
+  h1{ font-family:var(--font-heading); font-size:var(--fs-title); margin:4px 0 2px; letter-spacing:-0.02em; }
+  .sub{ margin:0 0 18px; color:var(--muted); font-size:var(--fs-small); line-height:1.45; }
+
+  .hero{
+    background:var(--accent); color:var(--accent-ink);
+    border-radius:20px; padding:18px; margin-bottom:16px;
+  }
+  .hero-top{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+  .hero small{ display:block; font-size:var(--fs-label); letter-spacing:.08em; text-transform:uppercase; opacity:.8; font-weight:700; }
+  .factor-row{ display:flex; align-items:baseline; gap:4px; }
+  .factor-row span{ font-family:var(--font-heading); font-size:var(--fs-factor); font-weight:800; line-height:1; }
+  .hero input{
+    width:140px; font-family:var(--font-heading); font-size:var(--fs-factor); font-weight:800; line-height:1.1;
+    background:transparent; color:inherit; border:none; border-bottom:2px dashed rgba(255,255,255,.45);
+    padding:0; border-radius:0; text-align:left;
+  }
+  .hero input:focus{ outline:none; border-bottom-color:currentColor; box-shadow:none; }
+  .chips{ display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .chip{
+    font:inherit; font-size:var(--fs-small); font-weight:700; min-height:40px; padding:0 16px;
+    border-radius:999px; border:1.5px solid rgba(255,255,255,.55); background:transparent; color:inherit; cursor:pointer;
+  }
+  .chip.on{ background:var(--accent-ink); color:var(--accent); border-color:var(--accent-ink); }
+  .totals{ margin-top:14px; font-size:var(--fs-small); opacity:.92; line-height:1.5; }
+
+  .grid{ display:grid; grid-template-columns:1fr; gap:12px; }
+  @media (min-width:760px){ .grid{ grid-template-columns:1fr 1fr; } }
+
+  .item{ background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:14px; }
+  .item-top{ display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+  .item-top .name{ flex:1; font-weight:700; }
+  .del{
+    width:40px; height:40px; flex:none; border-radius:50%; border:none; background:var(--surface-2);
+    color:var(--muted); font-size:1.3rem; line-height:1; cursor:pointer; padding:0;
+  }
+  .del:hover{ color:var(--danger); }
+  .fields{ display:grid; grid-template-columns:1fr 84px 1.15fr; gap:8px; }
+  label{ display:block; font-size:var(--fs-label); font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+  input[type=text], input[type=number], select{
+    width:100%; min-width:0; font:inherit; font-size:var(--fs-input);
+    color:var(--text); background:var(--surface-2); border:1.5px solid transparent; border-radius:10px;
+    padding:11px 10px; -webkit-appearance:none; appearance:none;
+  }
+  input[type=number]{ text-align:right; font-variant-numeric:tabular-nums; font-weight:600; -moz-appearance:textfield; }
+  input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .scaled input{ font-size:var(--fs-big); font-weight:800; color:var(--accent); background:var(--accent-soft); }
+  select{
+    padding-right:24px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%238FA298' stroke-width='1.8'/></svg>");
+    background-repeat:no-repeat; background-position:right 9px center;
+  }
+  input:focus, select:focus{ outline:none; border-color:var(--accent); }
+  .meter{ display:flex; align-items:center; gap:10px; margin-top:12px; }
+  .bar{ flex:1; height:8px; background:var(--surface-2); border-radius:99px; overflow:hidden; }
+  .bar i{ display:block; height:100%; width:0; background:var(--amber); border-radius:99px; transition:width .25s; }
+  .pill{ font-size:var(--fs-small); font-weight:700; color:var(--accent); background:var(--accent-soft); border-radius:99px; padding:3px 10px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .pct{ font-size:var(--fs-small); color:var(--muted); min-width:38px; text-align:right; font-variant-numeric:tabular-nums; }
+
+  .actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+  .btn{
+    font:inherit; font-size:var(--fs-input); font-weight:700; min-height:48px; padding:0 20px;
+    border-radius:14px; cursor:pointer; flex:1 1 160px;
+  }
+  .btn.add{ background:transparent; border:2px dashed var(--line); color:var(--muted); }
+  .btn.add:hover{ border-color:var(--accent); color:var(--accent); }
+  .btn.export{ background:var(--accent); color:var(--accent-ink); border:2px solid var(--accent); }
+  .btn.reset{ background:transparent; border:none; color:var(--muted); flex:0 1 auto; text-decoration:underline; font-weight:500; }
+  .toast{
+    position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translate(-50%,20px);
+    background:var(--text); color:var(--bg); padding:10px 16px; border-radius:99px; font-size:var(--fs-small);
+    opacity:0; pointer-events:none; transition:.25s; max-width:90%; text-align:center;
+  }
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
+  @media (max-width:420px){ .fields{ grid-template-columns:1fr 76px; } .fields .scaled{ grid-column:1 / -1; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🍳 Recipe Scaler</h1>
+  <p class="sub">Enter the original recipe once. Change any “Scaled to” number, or tap a batch size, and every ingredient follows the same ratio.</p>
+
+  <section class="hero">
+    <div class="hero-top">
+      <div>
+        <small>Batch size</small>
+        <div class="factor-row"><span>×</span><input id="factor" type="number" inputmode="decimal" step="any" min="0" aria-label="Batch multiplier"></div>
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="totals" id="totals"></div>
+  </section>
+
+  <div class="grid" id="list"></div>
+
+  <div class="actions">
+    <button class="btn add" id="add">+ Add ingredient</button>
+    <button class="btn export" id="export">Export to Excel (CSV)</button>
+    <button class="btn reset" id="reset">Reset to example</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const KEY = 'recipe-scaler-app-v1';
+const UNITS = ['g','kg','ml','l','cup','tbsp','tsp','pcs','oz','lb'];
+const CHIPS = [0.5, 1, 2, 3, 4];
+const EXAMPLE = () => ({ factor:1, rows:[
+  {name:'Flour', original:500, unit:'g'}, {name:'Butter', original:250, unit:'g'},
+  {name:'Sugar', original:200, unit:'g'}, {name:'Eggs', original:100, unit:'g'},
+  {name:'Milk', original:150, unit:'ml'} ] });
+
+let state = load() || EXAMPLE();
+let refs = [];
+const $ = id => document.getElementById(id);
+
+function load(){
+  try{ const s = JSON.parse(localStorage.getItem(KEY)); return s && Array.isArray(s.rows) ? s : null; }
+  catch(e){ return null; }
+}
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+function fmt(n){ n = Number(n); return isNaN(n) ? '0' : String(Math.round(n*100)/100); }
+function scaled(r){ return r.original * state.factor; }
+function smallest(){
+  const v = state.rows.map(r => r.original).filter(x => x > 0);
+  return v.length ? Math.min(...v) : 0;
+}
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+function numInput(val, onInput){
+  const i = document.createElement('input');
+  i.type = 'number'; i.inputMode = 'decimal'; i.step = 'any'; i.min = '0'; i.value = val;
+  i.addEventListener('focus', () => setTimeout(() => { try{ i.select(); }catch(e){} }, 0));
+  i.addEventListener('input', () => { const v = parseFloat(i.value); if(!isNaN(v) && v >= 0) onInput(v); });
+  return i;
+}
+function field(cls, label, el){
+  const d = document.createElement('div'); d.className = cls;
+  const l = document.createElement('label'); l.textContent = label;
+  d.append(l, el); return d;
+}
+
+function build(){
+  const list = $('list'); list.innerHTML = ''; refs = [];
+  state.rows.forEach((r, i) => {
+    const card = document.createElement('div'); card.className = 'item';
+
+    const name = document.createElement('input');
+    name.type = 'text'; name.className = 'name'; name.placeholder = 'Ingredient name'; name.value = r.name;
+    name.addEventListener('input', () => { r.name = name.value; save(); });
+    const del = document.createElement('button');
+    del.className = 'del'; del.type = 'button'; del.textContent = '×'; del.setAttribute('aria-label','Remove ingredient');
+    del.addEventListener('click', () => { state.rows.splice(i,1); save(); build(); refresh(); });
+    const top = document.createElement('div'); top.className = 'item-top'; top.append(name, del);
+
+    const orig = numInput(r.original, v => { r.original = v; save(); refresh(); });
+    const unit = document.createElement('select');
+    (UNITS.includes(r.unit) ? UNITS : UNITS.concat(r.unit)).forEach(u => {
+      const o = document.createElement('option'); o.value = o.textContent = u; if(u === r.unit) o.selected = true; unit.appendChild(o);
+    });
+    unit.addEventListener('change', () => { r.unit = unit.value; save(); refresh(); });
+    const sc = numInput(fmt(scaled(r)), v => {
+      if(r.original > 0){ state.factor = v / r.original; save(); refresh(sc, null); }
+    });
+
+    const fields = document.createElement('div'); fields.className = 'fields';
+    fields.append(field('', 'Original', orig), field('', 'Unit', unit), field('scaled', 'Scaled to', sc));
+
+    const pill = document.createElement('span'); pill.className = 'pill';
+    const bar = document.createElement('div'); bar.className = 'bar'; const fill = document.createElement('i'); bar.appendChild(fill);
+    const pct = document.createElement('span'); pct.className = 'pct';
+    const meter = document.createElement('div'); meter.className = 'meter'; meter.append(pill, bar, pct);
+
+    card.append(top, fields, meter); list.appendChild(card);
+    refs[i] = { sc, pill, fill, pct };
+  });
+}
+
+// Update numbers in place (never rebuild while typing) so the keyboard stays open.
+function refresh(skipScaled, skipFactor){
+  const base = smallest();
+  const total = state.rows.reduce((s, r) => s + r.original, 0);
+  state.rows.forEach((r, i) => {
+    const x = refs[i]; if(!x) return;
+    if(x.sc !== skipScaled) x.sc.value = fmt(scaled(r));
+    x.pill.textContent = base > 0 && r.original > 0 ? fmt(r.original / base) + '×' : '—';
+    const share = total > 0 ? r.original / total * 100 : 0;
+    x.fill.style.width = share + '%'; x.pct.textContent = Math.round(share) + '%';
+  });
+  if(skipFactor !== $('factor')) $('factor').value = fmt(state.factor);
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', Math.abs(Number(c.dataset.v) - state.factor) < 1e-9));
+  const sums = {};
+  state.rows.forEach(r => { sums[r.unit] = (sums[r.unit] || 0) + scaled(r); });
+  $('totals').textContent = 'Total: ' + (Object.keys(sums).map(u => fmt(sums[u]) + ' ' + u).join('  ·  ') || '—');
+}
+
+CHIPS.forEach(v => {
+  const b = document.createElement('button');
+  b.className = 'chip'; b.type = 'button'; b.dataset.v = v; b.textContent = v === 0.5 ? '½×' : v + '×';
+  b.addEventListener('click', () => { state.factor = v; save(); refresh(); });
+  $('chips').appendChild(b);
+});
+$('factor').addEventListener('focus', () => setTimeout(() => { try{ $('factor').select(); }catch(e){} }, 0));
+$('factor').addEventListener('input', () => {
+  const v = parseFloat($('factor').value);
+  if(!isNaN(v) && v >= 0){ state.factor = v; save(); refresh(null, $('factor')); }
+});
+$('add').addEventListener('click', () => {
+  state.rows.push({name:'', original:0, unit:'g'}); save(); build(); refresh();
+  const n = document.querySelectorAll('.item .name'); n[n.length-1].focus();
+});
+$('reset').addEventListener('click', () => { state = EXAMPLE(); save(); build(); refresh(); });
+
+$('export').addEventListener('click', async () => {
+  const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
+  const base = smallest();
+  const lines = [['Ingredient','Ratio','Original','Unit','Scaled to'].join(',')];
+  state.rows.forEach(r => lines.push([r.name, base > 0 && r.original > 0 ? fmt(r.original/base) : '', fmt(r.original), r.unit, fmt(scaled(r))].map(esc).join(',')));
+  const csv = '\uFEFF' + lines.join('\r\n');
+  try{
+    const dl = await claude.use('downloads');
+    if(dl){ await dl.save({ filename:'recipe-scaled.csv', data:csv }); toast('Saved'); return; }
+  }catch(e){ if(e && e.code === 'declined') return; }
+  try{ await navigator.clipboard.writeText(lines.join('\n').replace(/,/g,'\t')); toast('Copied. Paste into Excel or Numbers'); }
+  catch(e){ toast('Export isn’t available in this view'); }
+});
+
+build(); refresh();
+</script>
+</body>
+</html>
