@@ -53,6 +53,11 @@
   h1{ font-family:var(--font-heading); font-size:var(--fs-title); margin:4px 0 2px; letter-spacing:-0.02em; }
   .sub{ margin:0 0 18px; color:var(--muted); font-size:var(--fs-small); line-height:1.45; }
 
+  .title-input{
+    font-family:var(--font-heading); font-size:1.35rem; font-weight:800; padding:14px 14px;
+    background:var(--surface); border:1.5px solid var(--line); border-radius:14px; margin-bottom:14px;
+  }
+  .title-input::placeholder{ color:var(--muted); font-weight:600; }
   .hero{
     background:var(--accent); color:var(--accent-ink);
     border-radius:20px; padding:18px; margin-bottom:16px;
@@ -131,6 +136,8 @@
   <h1>🍳 Recipe Scaler</h1>
   <p class="sub">Enter the original recipe once. Change any “Scaled to” number, or tap a batch size, and every ingredient follows the same ratio.</p>
 
+  <input id="title" class="title-input" type="text" placeholder="Recipe title (e.g. Vanilla Sponge Cake)" aria-label="Recipe title">
+
   <section class="hero">
     <div class="hero-top">
       <div>
@@ -156,12 +163,12 @@
 const KEY = 'recipe-scaler-app-v1';
 const UNITS = ['g','kg','ml','l','cup','tbsp','tsp','pcs','oz','lb'];
 const CHIPS = [0.5, 1, 2, 3, 4];
-const EXAMPLE = () => ({ factor:1, rows:[
+const EXAMPLE = () => ({ title:'Vanilla Sponge Cake', factor:1, rows:[
   {name:'Flour', original:500, unit:'g'}, {name:'Butter', original:250, unit:'g'},
-  {name:'Sugar', original:200, unit:'g'}, {name:'Eggs', original:100, unit:'g'},
-  {name:'Milk', original:150, unit:'ml'} ] });
+  {name:'Sugar', original:200, unit:'g'}, {name:'Milk', original:150, unit:'ml'} ] });
 
 let state = load() || EXAMPLE();
+if(typeof state.title !== 'string') state.title = '';
 let refs = [];
 const $ = id => document.getElementById(id);
 
@@ -263,22 +270,24 @@ $('add').addEventListener('click', () => {
   state.rows.push({name:'', original:0, unit:'g'}); save(); build(); refresh();
   const n = document.querySelectorAll('.item .name'); n[n.length-1].focus();
 });
-$('reset').addEventListener('click', () => { state = EXAMPLE(); save(); build(); refresh(); });
+$('reset').addEventListener('click', () => { state = EXAMPLE(); $('title').value = state.title; save(); build(); refresh(); });
+$('title').addEventListener('input', () => { state.title = $('title').value; save(); });
 
 $('export').addEventListener('click', async () => {
   const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
   const base = smallest();
-  const lines = [['Ingredient','Ratio','Original','Unit','Scaled to'].join(',')];
+  const lines = [['Recipe', state.title].map(esc).join(','), ['Batch size', fmt(state.factor) + 'x'].join(','), '', ['Ingredient','Ratio','Original','Unit','Scaled to'].join(',')];
   state.rows.forEach(r => lines.push([r.name, base > 0 && r.original > 0 ? fmt(r.original/base) : '', fmt(r.original), r.unit, fmt(scaled(r))].map(esc).join(',')));
   const csv = '\uFEFF' + lines.join('\r\n');
   try{
     const dl = await claude.use('downloads');
-    if(dl){ await dl.save({ filename:'recipe-scaled.csv', data:csv }); toast('Saved'); return; }
+    if(dl){ await dl.save({ filename:((state.title || 'recipe').trim().replace(/[^\w\-]+/g,'-').replace(/^-+|-+$/g,'') || 'recipe') + '-scaled.csv', data:csv }); toast('Saved'); return; }
   }catch(e){ if(e && e.code === 'declined') return; }
   try{ await navigator.clipboard.writeText(lines.join('\n').replace(/,/g,'\t')); toast('Copied. Paste into Excel or Numbers'); }
   catch(e){ toast('Export isn’t available in this view'); }
 });
 
+$('title').value = state.title;
 build(); refresh();
 </script>
 </body>
