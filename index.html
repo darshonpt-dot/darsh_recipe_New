@@ -284,10 +284,23 @@ $('export').addEventListener('click', async () => {
   const lines = [['Recipe', state.title].map(esc).join(','), ['Batch size', fmt(state.factor) + 'x'].join(','), '', ['Ingredient','Ratio','Original','Scaled to','Unit'].join(',')];
   state.rows.forEach(r => lines.push([r.name, base > 0 && r.original > 0 ? fmt(r.original/base) : '', fmt(r.original), fmt(scaled(r)), r.unit].map(esc).join(',')));
   const csv = '\uFEFF' + lines.join('\r\n');
+  const fname = ((state.title || 'recipe').trim().replace(/[^\w\-]+/g,'-').replace(/^-+|-+$/g,'') || 'recipe') + '-scaled.csv';
+  // 1) Hosted link: use the viewer's save capability.
   try{
-    const dl = await claude.use('downloads');
-    if(dl){ await dl.save({ filename:((state.title || 'recipe').trim().replace(/[^\w\-]+/g,'-').replace(/^-+|-+$/g,'') || 'recipe') + '-scaled.csv', data:csv }); toast('Saved'); return; }
+    const dl = (typeof claude !== 'undefined') ? await claude.use('downloads') : null;
+    if(dl){ await dl.save({ filename:fname, data:csv }); toast('Saved'); return; }
   }catch(e){ if(e && e.code === 'declined') return; }
+  // 2) Opened as a normal file on PC or phone: regular browser download.
+  try{
+    const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    toast('Downloading ' + fname);
+    return;
+  }catch(e){}
+  // 3) Last resort: copy the table to the clipboard.
   try{ await navigator.clipboard.writeText(lines.join('\n').replace(/,/g,'\t')); toast('Copied. Paste into Excel or Numbers'); }
   catch(e){ toast('Export isn’t available in this view'); }
 });
