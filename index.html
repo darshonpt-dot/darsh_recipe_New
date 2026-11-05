@@ -51,6 +51,7 @@
   }
   .wrap{ max-width:880px; margin:0 auto; }
   h1{ font-family:var(--font-heading); font-size:var(--fs-title); margin:4px 0 2px; letter-spacing:-0.02em; }
+  .byline{ margin:0 0 10px; color:var(--muted); font-size:var(--fs-small); font-weight:700; letter-spacing:.04em; }
   .sub{ margin:0 0 18px; color:var(--muted); font-size:var(--fs-small); line-height:1.45; }
 
   .title-input{
@@ -121,6 +122,7 @@
   .btn.add{ background:transparent; border:2px dashed var(--line); color:var(--muted); }
   .btn.add:hover{ border-color:var(--accent); color:var(--accent); }
   .btn.export{ background:var(--accent); color:var(--accent-ink); border:2px solid var(--accent); }
+  .btn.import{ background:transparent; color:var(--accent); border:2px solid var(--accent); }
   .btn.reset{ background:transparent; border:none; color:var(--muted); flex:0 1 auto; text-decoration:underline; font-weight:500; }
   .toast{
     position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translate(-50%,20px);
@@ -134,10 +136,10 @@
 <body>
 <div class="wrap">
   <h1>🍳 Recipe Scaler</h1>
-  <h2>by darshan</h2>
+  <div class="byline">By Darshan</div>
   <p class="sub">Enter the original recipe once. Change any “Scaled to” number, or tap a batch size, and every ingredient follows the same ratio.</p>
 
-  <input id="title" class="title-input" type="text" placeholder="Recipe title (e.g. Recipe_Name)" aria-label="Recipe title">
+  <input id="title" class="title-input" type="text" placeholder="Recipe title (e.g. Vanilla Sponge Cake)" aria-label="Recipe title">
 
   <section class="hero">
     <div class="hero-top">
@@ -154,6 +156,8 @@
 
   <div class="actions">
     <button class="btn add" id="add">+ Add ingredient</button>
+    <button class="btn import" id="import">Import from CSV</button>
+    <input type="file" id="importFile" accept=".csv,text/csv,text/plain" hidden>
     <button class="btn export" id="export">Export to Excel (CSV)</button>
     <button class="btn reset" id="reset">Reset to example</button>
   </div>
@@ -164,7 +168,7 @@
 const KEY = 'recipe-scaler-app-v1';
 const UNITS = ['g','kg','ml','l','cup','tbsp','tsp','pcs','oz','lb'];
 const CHIPS = [0.5, 1, 2, 3, 4];
-const EXAMPLE = () => ({ title:'Recipe_Name', factor:1, rows:[
+const EXAMPLE = () => ({ title:'Vanilla Sponge Cake', factor:1, rows:[
   {name:'Flour', original:500, unit:'g'}, {name:'Butter', original:250, unit:'g'},
   {name:'Sugar', original:200, unit:'g'}, {name:'Milk', original:150, unit:'ml'} ] });
 
@@ -277,8 +281,8 @@ $('title').addEventListener('input', () => { state.title = $('title').value; sav
 $('export').addEventListener('click', async () => {
   const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
   const base = smallest();
-  const lines = [['Recipe', state.title].map(esc).join(','), ['Batch size', fmt(state.factor) + 'x'].join(','), '', ['Ingredient','Ratio','Original','Unit','Scaled to'].join(',')];
-  state.rows.forEach(r => lines.push([r.name, base > 0 && r.original > 0 ? fmt(r.original/base) : '', fmt(r.original), r.unit, fmt(scaled(r))].map(esc).join(',')));
+  const lines = [['Recipe', state.title].map(esc).join(','), ['Batch size', fmt(state.factor) + 'x'].join(','), '', ['Ingredient','Ratio','Original','Scaled to','Unit'].join(',')];
+  state.rows.forEach(r => lines.push([r.name, base > 0 && r.original > 0 ? fmt(r.original/base) : '', fmt(r.original), fmt(scaled(r)), r.unit].map(esc).join(',')));
   const csv = '\uFEFF' + lines.join('\r\n');
   try{
     const dl = await claude.use('downloads');
@@ -286,6 +290,88 @@ $('export').addEventListener('click', async () => {
   }catch(e){ if(e && e.code === 'declined') return; }
   try{ await navigator.clipboard.writeText(lines.join('\n').replace(/,/g,'\t')); toast('Copied. Paste into Excel or Numbers'); }
   catch(e){ toast('Export isn’t available in this view'); }
+});
+
+/* ---------- Import (CSV exported from this tool, or a similar CSV) ---------- */
+const UNIT_ALIASES = { gm:'g', gms:'g', gram:'g', grams:'g', kgs:'kg', kilogram:'kg', kilograms:'kg',
+  milliliter:'ml', millilitre:'ml', milliliters:'ml', millilitres:'ml', mls:'ml',
+  litre:'l', liter:'l', litres:'l', liters:'l', cups:'cup', tablespoon:'tbsp', tablespoons:'tbsp',
+  teaspoon:'tsp', teaspoons:'tsp', piece:'pcs', pieces:'pcs', pc:'pcs', ounce:'oz', ounces:'oz',
+  lbs:'lb', pound:'lb', pounds:'lb' };
+function normUnit(u){
+  const s = String(u || '').trim().toLowerCase();
+  return UNIT_ALIASES[s] || s;
+}
+function parseCSV(text){
+  text = String(text).replace(/^\uFEFF/, '');
+  const firstLine = text.split(/\r?\n/).find(l => l.trim()) || '';
+  const count = ch => firstLine.split(ch).length - 1;
+  const delim = count(';') > count(',') ? ';' : (count('\t') > count(',') ? '\t' : ',');
+  const out = []; let row = [], cell = '', q = false;
+  for(let i = 0; i < text.length; i++){
+    const c = text[i];
+    if(q){
+      if(c === '"'){ if(text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
+      else cell += c;
+    }
+    else if(c === '"') q = true;
+    else if(c === delim){ row.push(cell); cell = ''; }
+    else if(c === '\n' || c === '\r'){
+      if(c === '\r' && text[i+1] === '\n') i++;
+      row.push(cell); cell = ''; out.push(row); row = [];
+    }
+    else cell += c;
+  }
+  if(cell !== '' || row.length){ row.push(cell); out.push(row); }
+  return { table: out, delim };
+}
+function interpretImport(text){
+  const { table, delim } = parseCSV(text);
+  const num = s => parseFloat(String(s == null ? '' : s).replace(/\s/g, '').replace(delim === ';' ? ',' : /^$/, '.'));
+  let title = null, h = -1;
+  for(let i = 0; i < table.length; i++){
+    const key = (table[i][0] || '').trim().toLowerCase();
+    if(key === 'recipe' && table[i].length > 1 && h < 0) title = (table[i][1] || '').trim();
+    if(key === 'ingredient'){ h = i; break; }
+  }
+  if(h < 0) return null;
+  const head = table[h].map(x => x.trim().toLowerCase());
+  const col = { name: head.indexOf('ingredient'), orig: head.indexOf('original'),
+                unit: head.indexOf('unit'), scaled: head.findIndex(x => x.indexOf('scaled') === 0) };
+  if(col.orig < 0) return null;
+  const rows = [];
+  for(let i = h + 1; i < table.length; i++){
+    const r = table[i];
+    const name = (r[col.name] || '').trim();
+    const original = num(r[col.orig]);
+    if(!name && isNaN(original)) continue;
+    rows.push({ name, original: isNaN(original) || original < 0 ? 0 : original,
+                unit: normUnit(col.unit >= 0 ? r[col.unit] : '') || 'g',
+                scaledVal: col.scaled >= 0 ? num(r[col.scaled]) : NaN });
+  }
+  if(!rows.length) return null;
+  const ref = rows.find(r => r.original > 0 && r.scaledVal > 0);
+  const factor = ref ? ref.scaledVal / ref.original : 1;
+  return { title, factor, rows: rows.map(r => ({ name: r.name, original: r.original, unit: r.unit })) };
+}
+
+$('import').addEventListener('click', () => $('importFile').click());
+$('importFile').addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const res = interpretImport(rd.result);
+    if(!res){ toast('Couldn’t read that file. Use a CSV exported from this tool.'); return; }
+    state.rows = res.rows;
+    state.factor = res.factor;
+    if(res.title !== null) state.title = res.title;
+    save(); $('title').value = state.title; build(); refresh();
+    toast('Imported ' + res.rows.length + ' ingredients');
+  };
+  rd.onerror = () => toast('Couldn’t open that file');
+  rd.readAsText(f);
+  e.target.value = '';
 });
 
 $('title').value = state.title;
